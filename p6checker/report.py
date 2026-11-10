@@ -67,15 +67,15 @@ def write_html(xer: XerFile, result: CheckResult, path: Path, png: bytes | None 
     doc = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{e(xer.path.name)} schedule check</title>
 <style>
- body{{font:14px/1.45 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;margin:0;padding:24px;max-width:1100px;color:#222}}
- h1{{font-size:22px;margin:0 0 4px}} h2{{font-size:17px;margin:28px 0 8px}} .n{{color:#888;font-weight:400}}
- .meta{{color:#666;margin-bottom:16px}}
+ body{{font:14px/1.45 Geist,-apple-system,Segoe UI,Helvetica,Arial,sans-serif;margin:0;padding:24px;max-width:1100px;color:#171717;background:#fffcf7}}
+ h1{{font-size:22px;margin:0 0 4px;color:#0f2a4a}} h2{{font-size:17px;margin:28px 0 8px;color:#0f2a4a}} .n{{color:#8f877b;font-weight:400}}
+ .meta{{color:#665f55;margin-bottom:16px}}
  .cards{{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}}
- .card{{border:1px solid #ddd;border-radius:8px;padding:10px 14px;min-width:150px}}
- .card b{{display:block;font-size:24px}} .card.bad b{{color:#c0392b}} .card.warn b{{color:#e67e22}} .card.ok b{{color:#2e8b57}}
- table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border-bottom:1px solid #eee;padding:5px 8px;text-align:left;vertical-align:top}}
- th{{background:#f6f6f6}} td:last-child{{white-space:nowrap}} .empty{{color:#888}}
- img{{max-width:100%;border:1px solid #eee;border-radius:8px}}
+ .card{{border:1px solid #d9d1c2;border-radius:8px;padding:10px 14px;min-width:150px;background:#fff}}
+ .card b{{display:block;font-size:24px}} .card.bad b{{color:#b5440d}} .card.warn b{{color:#d98c00}} .card.ok b{{color:#2f8f62}}
+ table{{border-collapse:collapse;width:100%;font-size:13px;background:#fff}} th,td{{border-bottom:1px solid #ece6da;padding:5px 8px;text-align:left;vertical-align:top}}
+ th{{background:#f7f3ea;color:#665f55}} td:last-child{{white-space:nowrap}} .empty{{color:#8f877b}}
+ img{{max-width:100%;border:1px solid #d9d1c2;border-radius:8px;background:#fff}}
 </style></head><body>
 <h1>{e(xer.path.name)}</h1>
 <div class="meta">XER {e(xer.version)} · exported {e(xer.export_date)} · decoded as {e(xer.encoding)} · {xer.line_count} lines · projects: {projects or '?'}</div>

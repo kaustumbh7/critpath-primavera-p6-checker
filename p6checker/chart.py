@@ -17,11 +17,12 @@ from matplotlib.patches import Patch
 
 from .checks import CheckResult
 
-# Status colours, validated for colour-vision deficiency and contrast against a
-# light surface. The same three are used by the web UI.
-NEGATIVE = "#b42318"
-NORMAL = "#047857"
-HIGH = "#d97706"
+# CritPath brand status colours (orange-dark and green from thecritpath.com,
+# plus an amber that keeps colour-vision separation from both). The web UI
+# uses the same three.
+NEGATIVE = "#b5440d"
+NORMAL = "#2f8f62"
+HIGH = "#d98c00"
 
 
 def histogram_data(result: CheckResult) -> dict:

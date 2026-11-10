@@ -86,6 +86,7 @@ export default function App() {
     <div className="page">
       <header className="masthead">
         <div>
+          <span className="eyebrow">Schedule checker</span>
           <h1>p6checker</h1>
           <p>Reads a Primavera P6 .xer export, quarantines rows it cannot trust, and runs three schedule-health checks.</p>
         </div>
