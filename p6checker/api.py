@@ -10,7 +10,7 @@ import base64
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -53,6 +53,10 @@ def check_path(path: Path, display_name: str, high_float_days: float) -> dict:
         "relationship_count": len(xer.table("TASKPRED")),
     }
     payload["broken_rows"] = [b.as_dict() for b in xer.broken]
+    payload["external_links"] = [
+        {"task_id": r.get("task_id", ""), "pred_task_id": r.get("pred_task_id", ""), "pred_proj_id": r.get("pred_proj_id", "")}
+        for r in xer.external_links
+    ]
     payload["chart_png_base64"] = base64.b64encode(float_histogram(result)).decode("ascii")
     return payload
 
@@ -65,8 +69,11 @@ def list_samples() -> list[dict]:
     ]
 
 
+Threshold = Query(DEFAULT_HIGH_FLOAT_DAYS, gt=0, le=100000, description="flag float above this many working days")
+
+
 @app.get("/api/samples/{name}")
-def check_sample(name: str, high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) -> dict:
+def check_sample(name: str, high_float_days: float = Threshold) -> dict:
     path = SAMPLES.get(name)
     if path is None:
         raise HTTPException(status_code=404, detail=f"no bundled sample named {name!r}")
@@ -74,11 +81,13 @@ def check_sample(name: str, high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) ->
 
 
 @app.post("/api/check")
-async def check_upload(file: UploadFile = File(...), high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) -> dict:
+def check_upload(file: UploadFile = File(...), high_float_days: float = Threshold) -> dict:
+    # Plain `def`, so FastAPI runs the parse and the chart render in a worker
+    # thread instead of blocking the event loop for the duration.
     name = file.filename or "upload.xer"
     if not name.lower().endswith(".xer"):
         raise HTTPException(status_code=422, detail=f"{name}: only .xer files are accepted")
-    raw = await file.read()
+    raw = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(raw) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail=f"{name}: file is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
     with tempfile.TemporaryDirectory() as tmp:
@@ -89,10 +98,15 @@ async def check_upload(file: UploadFile = File(...), high_float_days: float = DE
 
 if WEB_DIST.exists():
     app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+    _DIST = WEB_DIST.resolve()
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> FileResponse:
-        candidate = WEB_DIST / full_path
-        if full_path and candidate.is_file():
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail=f"no such API route: /{full_path}")
+        candidate = (_DIST / full_path).resolve()
+        # Only serve files that really live inside web/dist; anything else
+        # (including "../" tricks) gets the single-page app shell.
+        if full_path and candidate.is_relative_to(_DIST) and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(WEB_DIST / "index.html")
+        return FileResponse(_DIST / "index.html")

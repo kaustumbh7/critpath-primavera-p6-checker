@@ -17,6 +17,7 @@ a 10h/day activity are compared on the same footing.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, asdict
 
 from .parser import XerFile, LINE_KEY
@@ -26,7 +27,9 @@ DEFAULT_HOURS_PER_DAY = 8.0
 
 # Level-of-effort and WBS-summary "activities" take their dates from other
 # activities and are not expected to carry logic, so they are skipped by the
-# missing-links check. Milestones are real schedule points and are included.
+# missing-links check, as are completed activities (DCMA excludes them: a
+# finished activity with no predecessor is normal in a progressed schedule).
+# Milestones are real schedule points and are included.
 NON_LOGIC_TASK_TYPES = {"TT_LOE", "TT_WbsSumm"}
 
 CHECK_NAMES = ("missing_links", "negative_float", "high_float")
@@ -59,6 +62,7 @@ class CheckResult:
     high_float_threshold_days: float
     findings: dict[str, list[Finding]]
     float_days: list[float]  # one value per scheduled activity, for the chart
+    external_link_count: int = 0
 
     def count(self, check: str) -> int:
         return len(self.findings[check])
@@ -69,6 +73,7 @@ class CheckResult:
             "activity_count": self.activity_count,
             "unscheduled_count": self.unscheduled_count,
             "high_float_threshold_days": self.high_float_threshold_days,
+            "external_link_count": self.external_link_count,
             "counts": {c: self.count(c) for c in CHECK_NAMES},
             "findings": {c: [f.as_dict() for f in fs] for c, fs in self.findings.items()},
         }
@@ -95,6 +100,8 @@ def float_in_days(task: dict[str, str], hours_per_day: dict[str, float]) -> floa
 
 
 def run_checks(xer: XerFile, high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) -> CheckResult:
+    if not (math.isfinite(high_float_days) and high_float_days > 0):
+        raise ValueError(f"high_float_days must be a positive number, got {high_float_days!r}")
     tasks = xer.table("TASK").rows
     hours_per_day = calendar_hours_per_day(xer)
 
@@ -105,12 +112,12 @@ def run_checks(xer: XerFile, high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) -
     # --- missing links -----------------------------------------------------
     has_pred: set[str] = set()
     has_succ: set[str] = set()
-    for rel in xer.table("TASKPRED").rows:
+    for rel in list(xer.table("TASKPRED").rows) + list(xer.external_links):
         has_pred.add(rel["task_id"])
         has_succ.add(rel["pred_task_id"])
 
     for t in tasks:
-        if t["task_type"] in NON_LOGIC_TASK_TYPES:
+        if t["task_type"] in NON_LOGIC_TASK_TYPES or t["status_code"] == "TK_Complete":
             continue
         missing = []
         if t["task_id"] not in has_pred:
@@ -134,9 +141,9 @@ def run_checks(xer: XerFile, high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) -
                 _finding("high_float", t, f"total float {days:.1f} days (threshold {high_float_days:g})", days)
             )
 
-    for fs in findings.values():
-        fs.sort(key=lambda f: (f.value if f.value is not None else 0, f.task_code))
-    findings["high_float"].reverse()  # largest float first
+    findings["missing_links"].sort(key=lambda f: f.task_code)
+    findings["negative_float"].sort(key=lambda f: (f.value or 0, f.task_code))  # most negative first
+    findings["high_float"].sort(key=lambda f: (-(f.value or 0), f.task_code))  # largest float first
 
     return CheckResult(
         file=xer.path.name,
@@ -145,6 +152,7 @@ def run_checks(xer: XerFile, high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) -
         high_float_threshold_days=high_float_days,
         findings=findings,
         float_days=float_days,
+        external_link_count=len(xer.external_links),
     )
 
 

@@ -16,13 +16,20 @@ from .parser import read_xer, XerFormatError
 from .report import terminal_summary, write_html, write_json
 
 
+def positive_float(text: str) -> float:
+    value = float(text)
+    if not (value > 0 and value != float("inf")):
+        raise argparse.ArgumentTypeError(f"must be a positive number, got {text!r}")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="p6check", description="Check Primavera P6 .xer schedule files.")
     ap.add_argument("files", nargs="+", type=Path, help=".xer files to check")
     ap.add_argument("--out", type=Path, default=None, help="directory for HTML/PNG/JSON reports (created if missing)")
     ap.add_argument(
         "--high-float-days",
-        type=float,
+        type=positive_float,
         default=DEFAULT_HIGH_FLOAT_DAYS,
         help=f"flag activities whose total float exceeds this many working days (default {DEFAULT_HIGH_FLOAT_DAYS:g})",
     )

@@ -1,4 +1,6 @@
 ERMHDR	6.0	2024-05-01	Project	admin	Administrator	dbxDatabaseNoName	Project Management	USD
+%F	orphan_field
+%R	1	2
 %T	PROJECT
 %F	proj_id	proj_short_name	proj_name
 %R	1	DEMO	Planted-defect demo
@@ -22,6 +24,11 @@ ERMHDR	6.0	2024-05-01	Project	admin	Administrator	dbxDatabaseNoName	Project Mana
 %R	110	1	10	TT_Task	TK_NotStart	A080
 %R	111	1	10	TT_Task	TK_NotStart		Blank code	8	2024-07-01 08:00	2024-07-02 17:00
 this line is garbage
+%T	RSRC
+%R	1	no field list yet
+%T	TASKPRED
+%F	task_pred_id	task_id
+%R	0	101
 %T	TASKPRED
 %F	task_pred_id	task_id	pred_task_id	pred_type	lag_hr_cnt
 %R	1	101	100	PR_FS	0
@@ -31,5 +38,8 @@ this line is garbage
 %R	5	107	104	PR_FS	0
 %R	6	999	104	PR_FS	0
 %R	7	104	998	PR_FS	0
+%T	TASKPRED
+%F	task_pred_id	task_id	pred_task_id	proj_id	pred_proj_id	pred_type	lag_hr_cnt
+%R	8	104	5000	1	2	PR_FS	0
 %E
 %R	trailing	data

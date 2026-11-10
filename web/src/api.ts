@@ -17,6 +17,12 @@ export interface BrokenRow {
   raw: string
 }
 
+export interface ExternalLink {
+  task_id: string
+  pred_task_id: string
+  pred_proj_id: string
+}
+
 export interface CheckResponse {
   file: string
   activity_count: number
@@ -25,6 +31,8 @@ export interface CheckResponse {
   counts: Record<CheckName, number>
   findings: Record<CheckName, Finding[]>
   broken_rows: BrokenRow[]
+  external_links: ExternalLink[]
+  external_link_count: number
   chart_png_base64: string
   xer: {
     version: string

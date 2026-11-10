@@ -9,13 +9,21 @@ def test_cli_writes_reports(tmp_path, capsys):
     rc = main([str(FIXTURES / "planted-defects.xer"), "--out", str(tmp_path)])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "broken rows quarantined: 9" in out
+    assert "broken rows quarantined: 13" in out
     assert "Negative float" in out
     assert (tmp_path / "planted-defects.html").exists()
     assert (tmp_path / "planted-defects.png").stat().st_size > 1000
     assert (tmp_path / "planted-defects.json").exists()
     html = (tmp_path / "planted-defects.html").read_text()
     assert "A020" in html and "data:image/png;base64," in html
+
+
+def test_cli_rejects_bad_threshold(capsys):
+    import pytest
+
+    with pytest.raises(SystemExit):
+        main([str(FIXTURES / "planted-defects.xer"), "--high-float-days", "0"])
+    assert "positive number" in capsys.readouterr().err
 
 
 def test_cli_reports_unreadable_file(tmp_path, capsys):

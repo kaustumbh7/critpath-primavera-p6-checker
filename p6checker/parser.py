@@ -19,6 +19,7 @@ raises when the whole file is unusable (no ERMHDR, empty, undecodable).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -77,6 +78,11 @@ class XerFile:
     tables: dict[str, Table]
     broken: list[BrokenRow]
     line_count: int
+    # TASKPRED rows whose other end lives in a project that is not in this
+    # file. P6 writes these when a single project is exported from a
+    # multi-project database. They are real logic, so the missing-links check
+    # counts them, but they are reported separately.
+    external_links: list[dict[str, str]] = field(default_factory=list)
 
     def table(self, name: str) -> Table:
         """Return the table, or an empty one if the file does not have it."""
@@ -108,7 +114,11 @@ def read_xer(path: str | Path) -> XerFile:
     if not raw.strip():
         raise XerFormatError(f"{path.name}: file is empty")
     text, encoding = decode_xer(raw)
-    lines = text.splitlines()
+    # Split on "\n" only. str.splitlines() would also split on form feeds,
+    # NEL, U+2028 etc., which can legitimately appear inside a text field.
+    lines = [ln.rstrip("\r") for ln in text.split("\n")]
+    if lines and lines[-1] == "":
+        lines.pop()  # trailing newline
 
     if not lines or not lines[0].startswith("ERMHDR"):
         raise XerFormatError(f"{path.name}: first line must start with ERMHDR; this is not a P6 XER export")
@@ -170,7 +180,7 @@ def read_xer(path: str | Path) -> XerFile:
         else:
             broken.append(BrokenRow(line_no, current.name if current else None, f"unknown record type {kind!r}", line))
 
-    _validate_references(tables, broken)
+    external = _validate_references(tables, broken)
     broken.sort(key=lambda b: b.line_no)
 
     return XerFile(
@@ -180,11 +190,18 @@ def read_xer(path: str | Path) -> XerFile:
         tables=tables,
         broken=broken,
         line_count=len(lines),
+        external_links=external,
     )
+
+
+NUMBER_RE = re.compile(r"^-?\d+(\.\d+)?$")
 
 
 def _validate_row(table: str, row: dict[str, str]) -> str | None:
     """Return a reason string if this row cannot be trusted by the checks."""
+    for name, value in row.items():
+        if "\ufffd" in value:
+            return f"{name} contains bytes that are not valid in this file's encoding"
     for name in REQUIRED_FIELDS.get(table, ()):
         if name not in row:
             return f"missing required column {name!r}"
@@ -194,9 +211,7 @@ def _validate_row(table: str, row: dict[str, str]) -> str | None:
         value = row.get(name, "")
         if value.strip() == "":
             continue  # P6 leaves float empty on unscheduled activities; that is legitimate
-        try:
-            float(value)
-        except ValueError:
+        if not NUMBER_RE.match(value.strip()):
             return f"{name}={value!r} is not a number"
     for name in DATE_FIELDS.get(table, ()):
         value = row.get(name, "")
@@ -207,12 +222,14 @@ def _validate_row(table: str, row: dict[str, str]) -> str | None:
     return None
 
 
-def _validate_references(tables: dict[str, Table], broken: list[BrokenRow]) -> None:
+def _validate_references(tables: dict[str, Table], broken: list[BrokenRow]) -> list[dict[str, str]]:
     """Cross-row checks: duplicate task ids and relationships that point at
-    activities which do not exist. Both would corrupt the missing-links check."""
+    activities which do not exist. Both would corrupt the missing-links check.
+    Returns the relationships that point into another project (kept, not broken)."""
+    external: list[dict[str, str]] = []
     task = tables.get("TASK")
     if task is None:
-        return
+        return external
     seen: dict[str, int] = {}
     kept: list[dict[str, str]] = []
     for row in task.rows:
@@ -227,17 +244,25 @@ def _validate_references(tables: dict[str, Table], broken: list[BrokenRow]) -> N
 
     pred = tables.get("TASKPRED")
     if pred is None:
-        return
+        return external
     ids = set(seen)
     kept = []
     for row in pred.rows:
+        cross_project = row.get("pred_proj_id", "") != row.get("proj_id", "")
         if row["task_id"] not in ids:
-            broken.append(BrokenRow(_line(row), "TASKPRED", f"successor task_id {row['task_id']!r} does not exist in TASK", _raw(row)))
+            if cross_project:
+                external.append(row)
+            else:
+                broken.append(BrokenRow(_line(row), "TASKPRED", f"successor task_id {row['task_id']!r} does not exist in TASK", _raw(row)))
         elif row["pred_task_id"] not in ids:
-            broken.append(BrokenRow(_line(row), "TASKPRED", f"predecessor task_id {row['pred_task_id']!r} does not exist in TASK", _raw(row)))
+            if cross_project:
+                external.append(row)
+            else:
+                broken.append(BrokenRow(_line(row), "TASKPRED", f"predecessor task_id {row['pred_task_id']!r} does not exist in TASK", _raw(row)))
         else:
             kept.append(row)
     pred.rows = kept
+    return external
 
 
 def _line(row: dict[str, str]) -> int:

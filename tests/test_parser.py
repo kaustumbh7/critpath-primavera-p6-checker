@@ -11,7 +11,8 @@ DATA = Path(__file__).parent.parent / "data"
 def test_parses_tables_and_quarantines_broken_rows():
     xer = read_xer(FIXTURES / "planted-defects.xer")
     assert xer.version == "6.0"
-    assert set(xer.tables) == {"PROJECT", "CALENDAR", "TASK", "TASKPRED"}
+    assert set(xer.tables) == {"PROJECT", "CALENDAR", "TASK", "TASKPRED", "RSRC"}
+    assert len(xer.table("RSRC")) == 0  # its only row came before its %F line
     # 8 good TASK rows survive: 100..107
     assert [r["task_code"] for r in xer.table("TASK").rows] == [
         "A000", "A010", "A020", "A030", "A040", "A050", "LOE1", "A999",
@@ -30,7 +31,46 @@ def test_parses_tables_and_quarantines_broken_rows():
     assert any("successor task_id '999' does not exist" in t for t in texts)
     assert any("predecessor task_id '998' does not exist" in t for t in texts)
     assert any("data after %E" in t for t in texts)
-    assert len(xer.broken) == 9, texts
+    assert any("%F field list before any %T" in t for t in texts)
+    assert any("%R row before any %T" in t for t in texts)
+    assert any("%R row before the table's %F" in t for t in texts)
+    assert any("missing required column 'pred_task_id'" in t for t in texts)
+    assert len(xer.broken) == 13, texts
+
+
+def test_cross_project_relationship_is_external_not_broken():
+    xer = read_xer(FIXTURES / "planted-defects.xer")
+    assert [(r["task_id"], r["pred_task_id"]) for r in xer.external_links] == [("104", "5000")]
+    assert not any("'5000'" in b.reason for b in xer.broken)
+
+
+def test_lines_split_only_on_newline(tmp_path):
+    # U+2028 inside a name must not split the row (str.splitlines would)
+    p = tmp_path / "ls.xer"
+    p.write_text("ERMHDR\t6.0\n%T\tPROJECT\n%F\tproj_id\tproj_short_name\n%R\t1\tA\u2028B\n%E\n", encoding="utf-8")
+    xer = read_xer(p)
+    assert xer.broken == []
+    assert xer.table("PROJECT").rows[0]["proj_short_name"] == "A\u2028B"
+    assert xer.line_count == 5
+
+
+def test_undecodable_bytes_are_quarantined(tmp_path):
+    p = tmp_path / "bad.xer"
+    p.write_bytes(b"ERMHDR\t6.0\n%T\tPROJECT\n%F\tproj_id\tproj_short_name\n%R\t1\tx\x81y\n%E\n")
+    xer = read_xer(p)
+    assert len(xer.broken) == 1 and "not valid in this file's encoding" in xer.broken[0].reason
+
+
+def test_numeric_fields_reject_nan_and_inf(tmp_path):
+    p = tmp_path / "nan.xer"
+    head = "ERMHDR\t6.0\n%T\tTASK\n%F\ttask_id\ttask_code\ttask_type\tstatus_code\ttotal_float_hr_cnt\n"
+    p.write_text(head + "%R\t1\tA\tTT_Task\tTK_NotStart\tnan\n%R\t2\tB\tTT_Task\tTK_NotStart\tinf\n%R\t3\tC\tTT_Task\tTK_NotStart\t-8.5\n%E\n")
+    xer = read_xer(p)
+    assert [b.reason for b in xer.broken] == [
+        "total_float_hr_cnt='nan' is not a number",
+        "total_float_hr_cnt='inf' is not a number",
+    ]
+    assert len(xer.table("TASK")) == 1
 
 
 def test_broken_rows_carry_line_numbers():

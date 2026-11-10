@@ -11,7 +11,7 @@ import {
 } from './api'
 
 const CHECKS: { key: CheckName; label: string; blurb: string }[] = [
-  { key: 'missing_links', label: 'Missing links', blurb: 'Activities with no predecessor, no successor, or neither. Level-of-effort and WBS summary activities are skipped.' },
+  { key: 'missing_links', label: 'Missing links', blurb: 'Activities with no predecessor, no successor, or neither. Level-of-effort, WBS summary and completed activities are skipped. Links into projects outside this file count as links.' },
   { key: 'negative_float', label: 'Negative float', blurb: 'Total float below zero. The activity is already late against a constraint or must-finish date.' },
   { key: 'high_float', label: 'High float', blurb: 'Total float above the threshold. Usually means the activity is not properly tied into the network.' },
 ]
@@ -22,48 +22,57 @@ const SAMPLE_LABELS: Record<string, string> = {
   'planted-defects.xer': 'Planted defects',
 }
 
+type Source = { kind: 'sample'; name: string } | { kind: 'file'; file: File }
+
 const fmt = (n: number) => n.toLocaleString('en-US')
 const kb = (b: number) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.round(b / 1024)} KB`)
 
 export default function App() {
   const [samples, setSamples] = useState<Sample[]>([])
+  const [samplesError, setSamplesError] = useState<string | null>(null)
   const [threshold, setThreshold] = useState(44)
+  const [thresholdText, setThresholdText] = useState('44')
   const [result, setResult] = useState<CheckResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
-  const lastSource = useRef<{ kind: 'sample'; name: string } | { kind: 'file'; file: File } | null>(null)
+  const lastSource = useRef<Source | null>(null)
+  const requestSeq = useRef(0)
 
   useEffect(() => {
-    listSamples().then(setSamples).catch((e: Error) => setError(e.message))
+    listSamples().then(setSamples).catch((e: Error) => setSamplesError(e.message))
   }, [])
 
-  const run = useCallback(
-    async (source: { kind: 'sample'; name: string } | { kind: 'file'; file: File }, days: number) => {
-      lastSource.current = source
-      setBusy(source.kind === 'sample' ? source.name : source.file.name)
-      setError(null)
-      try {
-        const r = source.kind === 'sample' ? await checkSample(source.name, days) : await checkUpload(source.file, days)
-        setResult(r)
-      } catch (e) {
-        setResult(null)
-        setError((e as Error).message)
-      } finally {
-        setBusy(null)
-      }
-    },
-    [],
-  )
+  const run = useCallback(async (source: Source, days: number) => {
+    lastSource.current = source
+    const seq = ++requestSeq.current // only the latest request may update the screen
+    setBusy(source.kind === 'sample' ? source.name : source.file.name)
+    setError(null)
+    try {
+      const r = source.kind === 'sample' ? await checkSample(source.name, days) : await checkUpload(source.file, days)
+      if (seq !== requestSeq.current) return
+      setResult(r)
+    } catch (e) {
+      if (seq !== requestSeq.current) return
+      setResult(null)
+      setError((e as Error).message)
+    } finally {
+      if (seq === requestSeq.current) setBusy(null)
+    }
+  }, [])
 
-  // Re-run the current file when the threshold changes (debounced).
-  useEffect(() => {
-    if (!lastSource.current || !result) return
-    if (result.high_float_threshold_days === threshold) return
-    const t = setTimeout(() => run(lastSource.current!, threshold), 350)
-    return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threshold])
+  // The threshold is committed on blur or Enter, never on every keystroke.
+  const commitThreshold = () => {
+    const n = Number(thresholdText)
+    if (!Number.isFinite(n) || n <= 0) {
+      setThresholdText(String(threshold))
+      return
+    }
+    if (n !== threshold) {
+      setThreshold(n)
+      if (lastSource.current) run(lastSource.current, n)
+    }
+  }
 
   const onFiles = (files: FileList | null) => {
     const f = files?.[0]
@@ -87,8 +96,8 @@ export default function App() {
           onDragLeave={() => setDragging(false)}
           onDrop={(e) => { e.preventDefault(); setDragging(false); onFiles(e.dataTransfer.files) }}
         >
-          <input type="file" accept=".xer" onChange={(e) => { onFiles(e.target.files); e.target.value = '' }} />
-          <span className="drop-title">Drop a .xer file here, or click to choose one</span>
+          <input type="file" accept=".xer" disabled={busy !== null} onChange={(e) => { onFiles(e.target.files); e.target.value = '' }} />
+          <span className="drop-title">{busy ? `Checking ${busy}…` : 'Drop a .xer file here, or click to choose one'}</span>
           <span className="drop-sub">Files stay on this machine. Up to 50 MB.</span>
         </label>
 
@@ -104,9 +113,19 @@ export default function App() {
           </div>
           <label className="threshold">
             High float above
-            <input type="number" min={1} max={999} value={threshold} onChange={(e) => setThreshold(Math.max(1, Number(e.target.value) || 1))} />
+            <input
+              type="number"
+              min={0.5}
+              step="any"
+              value={thresholdText}
+              disabled={busy !== null}
+              onChange={(e) => setThresholdText(e.target.value)}
+              onBlur={commitThreshold}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            />
             working days
           </label>
+          {samplesError && <p className="error-inline">Bundled schedules could not be listed: {samplesError}</p>}
         </div>
       </section>
 
@@ -166,6 +185,7 @@ function Results({ r }: { r: CheckResponse }) {
           <span><i className="sw ok" />0 to {r.high_float_threshold_days} days {fmt(ok)}</span>
           <span><i className="sw high" />above {r.high_float_threshold_days} days {fmt(high)}</span>
           {r.unscheduled_count > 0 && <span className="quiet">{fmt(r.unscheduled_count)} never scheduled, excluded</span>}
+          {r.external_link_count > 0 && <span className="quiet">{fmt(r.external_link_count)} links to activities in other projects, kept</span>}
         </div>
       </section>
 

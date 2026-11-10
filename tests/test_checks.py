@@ -52,6 +52,23 @@ def test_unscheduled_activities_are_counted_not_flagged():
     assert len(result.float_days) == 7
 
 
+def test_completed_activities_are_not_open_ends(tmp_path):
+    head = "ERMHDR\t6.0\n%T\tTASK\n%F\ttask_id\ttask_code\ttask_type\tstatus_code\ttotal_float_hr_cnt\n"
+    p = tmp_path / "done.xer"
+    p.write_text(head + "%R\t1\tDONE\tTT_Task\tTK_Complete\t0\n%R\t2\tOPEN\tTT_Task\tTK_Active\t0\n%E\n")
+    result = run_checks(read_xer(p))
+    assert codes(result, "missing_links") == ["OPEN"]
+
+
+def test_threshold_must_be_positive_and_finite():
+    import pytest
+
+    xer = read_xer(FIXTURES / "planted-defects.xer")
+    for bad in (0, -5, float("inf"), float("nan")):
+        with pytest.raises(ValueError):
+            run_checks(xer, high_float_days=bad)
+
+
 def test_float_in_days_falls_back_to_8h():
     assert float_in_days({"total_float_hr_cnt": "16", "clndr_id": "missing"}, {}) == 2.0
     assert float_in_days({"total_float_hr_cnt": "", "clndr_id": "10"}, {"10": 8}) is None
