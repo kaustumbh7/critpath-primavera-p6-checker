@@ -2,16 +2,24 @@
 
 A small checker for Primavera P6 `.xer` schedule exports. It reads the file,
 quarantines rows it cannot trust, runs three schedule-health checks and draws
-one chart. Built in about two hours as a take-home exercise.
+one chart. Built as a short take-home exercise.
 
 ```
-pip install -e ".[dev]"
-p6check data/*.xer --out reports
-pytest
+pip install -e ".[dev,web]"
+pytest                                    # 19 tests
+p6check data/*.xer --out reports          # command line
+uvicorn p6checker.api:app                 # web UI at http://127.0.0.1:8000
 ```
 
 `p6check` prints a summary per file and writes `reports/<file>.html` (self-contained,
 chart embedded), `.png` (the chart) and `.json` (every finding and every broken row).
+
+The web UI (React + TypeScript on a FastAPI backend) lets you drop any `.xer` on the
+page or pick one of the bundled schedules, and shows the same counts, chart, findings
+and quarantined rows. The built UI is committed in `web/dist`, so Node is only needed
+to change it (`cd web && npm install && npm run dev`). API docs are at `/docs`.
+
+![web UI](docs/web-ui.png)
 
 ## The two schedules
 
@@ -102,10 +110,13 @@ p6checker/checks.py   the three checks, hours-to-days conversion
 p6checker/chart.py    float histogram (matplotlib)
 p6checker/report.py   terminal summary, HTML and JSON output
 p6checker/cli.py      p6check command
-tests/                15 tests: parser edge cases, each check, the real files, CLI
+p6checker/api.py      FastAPI: POST /api/check (upload), GET /api/samples/<name>
+web/                  React + TypeScript UI (Vite); built output in web/dist
+tests/                19 tests: parser edge cases, each check, the real files, CLI, API
 ```
 
-No dependencies beyond matplotlib. Python 3.10+.
+The checker itself needs only matplotlib. The web UI adds fastapi and uvicorn.
+Python 3.10+.
 
 ## What I would do next
 
