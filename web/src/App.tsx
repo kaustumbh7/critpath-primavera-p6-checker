@@ -9,6 +9,7 @@ import {
   type Finding,
   type Sample,
 } from './api'
+import Preview from './Preview'
 
 const CHECKS: { key: CheckName; label: string; blurb: string }[] = [
   { key: 'missing_links', label: 'Missing links', blurb: 'Activities with no predecessor, no successor, or neither. Level-of-effort, WBS summary and completed activities are skipped. Links into projects outside this file count as links.' },
@@ -36,6 +37,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  const [preview, setPreview] = useState<string | null>(null)
   const lastSource = useRef<Source | null>(null)
   const requestSeq = useRef(0)
 
@@ -105,10 +107,15 @@ export default function App() {
           <span className="eyebrow">Or check a bundled schedule</span>
           <div className="sample-row">
             {samples.map((s) => (
-              <button key={s.name} className={`sample ${s.kind}`} disabled={busy !== null} onClick={() => run({ kind: 'sample', name: s.name }, threshold)}>
-                <b>{SAMPLE_LABELS[s.name] ?? s.name}</b>
-                <small>{s.name} · {kb(s.bytes)}{s.kind === 'fixture' ? ' · hand-written, every defect planted' : ' · real P6 export'}</small>
-              </button>
+              <div key={s.name} className={`sample ${s.kind}`}>
+                <button className="sample-main" disabled={busy !== null} onClick={() => run({ kind: 'sample', name: s.name }, threshold)}>
+                  <b>{SAMPLE_LABELS[s.name] ?? s.name}</b>
+                  <small>{s.name} · {kb(s.bytes)}{s.kind === 'fixture' ? ' · hand-written, every defect planted' : ' · real P6 export'}</small>
+                </button>
+                <button className="preview-btn" onClick={() => setPreview(s.name)} aria-label={`Preview the data in ${s.name}`}>
+                  Preview
+                </button>
+              </div>
             ))}
           </div>
           <label className="threshold">
@@ -128,6 +135,8 @@ export default function App() {
           {samplesError && <p className="error-inline">Bundled schedules could not be listed: {samplesError}</p>}
         </div>
       </section>
+
+      {preview && <Preview file={preview} onClose={() => setPreview(null)} />}
 
       {busy && <p className="status" role="status">Checking {busy}…</p>}
       {error && (

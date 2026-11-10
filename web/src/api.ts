@@ -76,3 +76,35 @@ export const checkUpload = (file: File, highFloatDays: number) => {
     parse<CheckResponse>(r),
   )
 }
+
+export interface TableSummary {
+  name: string
+  rows: number
+  columns: number
+}
+
+export interface TablesResponse {
+  file: string
+  xer: { version: string; export_date: string; encoding: string; line_count: number }
+  header: string[]
+  broken_row_count: number
+  tables: TableSummary[]
+}
+
+export interface TablePage {
+  file: string
+  table: string
+  fields: string[]
+  total: number
+  offset: number
+  rows: string[][]
+  lines: number[]
+}
+
+export const listTables = (name: string) =>
+  fetch(`/api/samples/${encodeURIComponent(name)}/tables`).then((r) => parse<TablesResponse>(r))
+
+export const fetchTablePage = (name: string, table: string, offset: number, limit = 50) =>
+  fetch(`/api/samples/${encodeURIComponent(name)}/tables/${encodeURIComponent(table)}?offset=${offset}&limit=${limit}`).then(
+    (r) => parse<TablePage>(r),
+  )

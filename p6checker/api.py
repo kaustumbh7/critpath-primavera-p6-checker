@@ -14,9 +14,11 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from functools import lru_cache
+
 from .chart import float_histogram
 from .checks import run_checks, DEFAULT_HIGH_FLOAT_DAYS
-from .parser import read_xer, XerFormatError
+from .parser import read_xer, XerFormatError, XerFile, LINE_KEY
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
@@ -78,6 +80,63 @@ def check_sample(name: str, high_float_days: float = Threshold) -> dict:
     if path is None:
         raise HTTPException(status_code=404, detail=f"no bundled sample named {name!r}")
     return check_path(path, name, high_float_days)
+
+
+@lru_cache(maxsize=8)
+def _parsed_sample(name: str, mtime_ns: int) -> XerFile:
+    """Parsed bundled file, cached per name and modification time so the
+    preview endpoints do not re-read a 3.8 MB file on every page."""
+    return read_xer(SAMPLES[name])
+
+
+def _sample_xer(name: str) -> XerFile:
+    path = SAMPLES.get(name)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"no bundled sample named {name!r}")
+    try:
+        return _parsed_sample(name, path.stat().st_mtime_ns)
+    except XerFormatError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/samples/{name}/tables")
+def sample_tables(name: str) -> dict:
+    """What the parser read from the file: every table with its size. Rows
+    that were quarantined are not counted here; they are in the check output."""
+    xer = _sample_xer(name)
+    return {
+        "file": name,
+        "xer": {"version": xer.version, "export_date": xer.export_date, "encoding": xer.encoding, "line_count": xer.line_count},
+        "header": xer.header,
+        "broken_row_count": len(xer.broken),
+        "tables": [
+            {"name": t.name, "rows": len(t.rows), "columns": len(t.fields)}
+            for t in xer.tables.values()
+        ],
+    }
+
+
+@app.get("/api/samples/{name}/tables/{table}")
+def sample_table_rows(
+    name: str,
+    table: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+) -> dict:
+    xer = _sample_xer(name)
+    t = xer.tables.get(table)
+    if t is None:
+        raise HTTPException(status_code=404, detail=f"{name} has no table named {table!r}")
+    page = t.rows[offset : offset + limit]
+    return {
+        "file": name,
+        "table": t.name,
+        "fields": t.fields,
+        "total": len(t.rows),
+        "offset": offset,
+        "rows": [[r.get(f, "") for f in t.fields] for r in page],
+        "lines": [int(r.get(LINE_KEY, 0)) for r in page],
+    }
 
 
 @app.post("/api/check")
