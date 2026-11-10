@@ -6,7 +6,7 @@ one chart. Built as a short take-home exercise.
 
 ```
 pip install -e ".[dev,web]"
-pytest                                    # 58 tests
+pytest                                    # 66 tests
 p6check data/*.xer --out reports          # command line
 uvicorn p6checker.api:app                 # web UI at http://127.0.0.1:8000
 ```
@@ -16,13 +16,17 @@ chart embedded), `.png` (the chart) and `.json` (every finding and every broken 
 
 The web UI (React + TypeScript on a FastAPI backend) lets you drop any `.xer` on the
 page or pick one of the bundled schedules, and shows the same counts, chart, findings
-and quarantined rows. Each bundled schedule also has a **Preview** button that opens
+and quarantined rows. The chart is interactive: hover a bar for its range and counts, click it to list
+the activities behind it, and the PNG from the command line is drawn from the same
+bins. Each bundled schedule also has a **Preview** button that opens
 what the parser read from the file: every table with its row and column count, and
 the rows themselves 50 at a time with their source line numbers. Quarantined rows
 are not in the preview. The built UI is committed in `web/dist`, so Node is only
 needed to change it (`cd web && npm install && npm run dev`). API docs are at `/docs`.
 
 ![web UI](docs/web-ui.png)
+
+![interactive float chart](docs/chart.png)
 
 ## The two schedules
 
@@ -123,13 +127,13 @@ whatever the threshold.
 ```
 p6checker/parser.py   XER reader, encoding detection, broken-row quarantine
 p6checker/checks.py   the three checks, hours-to-days conversion
-p6checker/chart.py    float histogram (matplotlib)
+p6checker/chart.py    float histogram: bins as data for the web chart, PNG via matplotlib
 p6checker/report.py   terminal summary, HTML and JSON output
 p6checker/cli.py      p6check command
 p6checker/api.py      FastAPI: POST /api/check (upload), GET /api/samples/<name>,
                       GET /api/samples/<name>/tables[/<table>] (preview)
-web/                  React + TypeScript UI (Vite); built output in web/dist
-tests/                58 tests: parser edge cases, each check, the chart at many thresholds, the real files, CLI, API
+web/                  React + TypeScript UI (Vite): upload, interactive SVG chart, preview; built output in web/dist
+tests/                66 tests: parser edge cases, each check, the chart at many thresholds, the real files, CLI, API
 ```
 
 The checker itself needs only matplotlib. The web UI adds fastapi and uvicorn.

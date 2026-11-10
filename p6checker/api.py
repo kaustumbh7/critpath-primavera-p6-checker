@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from functools import lru_cache
 
-from .chart import float_histogram
+from .chart import float_histogram, histogram_data
 from .checks import run_checks, DEFAULT_HIGH_FLOAT_DAYS
 from .parser import read_xer, XerFormatError, XerFile, LINE_KEY
 
@@ -59,6 +59,7 @@ def check_path(path: Path, display_name: str, high_float_days: float) -> dict:
         {"task_id": r.get("task_id", ""), "pred_task_id": r.get("pred_task_id", ""), "pred_proj_id": r.get("pred_proj_id", "")}
         for r in xer.external_links
     ]
+    payload["histogram"] = histogram_data(result)
     payload["chart_png_base64"] = base64.b64encode(float_histogram(result)).decode("ascii")
     return payload
 

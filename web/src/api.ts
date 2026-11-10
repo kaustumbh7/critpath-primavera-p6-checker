@@ -33,6 +33,7 @@ export interface CheckResponse {
   broken_rows: BrokenRow[]
   external_links: ExternalLink[]
   external_link_count: number
+  histogram: Histogram
   chart_png_base64: string
   xer: {
     version: string
@@ -108,3 +109,27 @@ export const fetchTablePage = (name: string, table: string, offset: number, limi
   fetch(`/api/samples/${encodeURIComponent(name)}/tables/${encodeURIComponent(table)}?offset=${offset}&limit=${limit}`).then(
     (r) => parse<TablePage>(r),
   )
+
+export type FloatGroup = 'negative' | 'ok' | 'high'
+
+export interface BinActivity {
+  code: string
+  name: string
+  days: number
+  group: FloatGroup
+}
+
+export interface HistogramBin {
+  lo: number
+  hi: number
+  negative: number
+  ok: number
+  high: number
+  activities: BinActivity[]
+}
+
+export interface Histogram {
+  threshold: number
+  bin_width: number
+  bins: HistogramBin[]
+}

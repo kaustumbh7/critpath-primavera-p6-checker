@@ -10,6 +10,7 @@ import {
   type Sample,
 } from './api'
 import Preview from './Preview'
+import FloatChart from './FloatChart'
 
 const CHECKS: { key: CheckName; label: string; blurb: string }[] = [
   { key: 'missing_links', label: 'Missing links', blurb: 'Activities with no predecessor, no successor, or neither. Level-of-effort, WBS summary and completed activities are skipped. Links into projects outside this file count as links.' },
@@ -198,9 +199,13 @@ function Results({ r }: { r: CheckResponse }) {
         </div>
       </section>
 
-      <figure className="chart">
-        <img src={`data:image/png;base64,${r.chart_png_base64}`} alt={`Total float distribution for ${r.file}`} />
-      </figure>
+      <section className="chart">
+        <div className="chart-head">
+          <h3>Total float per activity</h3>
+          <a className="quiet" href={`data:image/png;base64,${r.chart_png_base64}`} download={`${r.file.replace(/\.xer$/i, '')}-float.png`}>Download as PNG</a>
+        </div>
+        <FloatChart file={r.file} histogram={r.histogram} />
+      </section>
 
       {CHECKS.map((c) => (
         <FindingsSection key={c.key} title={c.key === 'high_float' ? `${c.label} (above ${r.high_float_threshold_days} working days)` : c.label} blurb={c.blurb} rows={r.findings[c.key]} />

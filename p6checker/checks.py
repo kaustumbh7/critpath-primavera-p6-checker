@@ -18,7 +18,7 @@ a 10h/day activity are compared on the same footing.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 
 from .parser import XerFile, LINE_KEY
 
@@ -63,6 +63,8 @@ class CheckResult:
     findings: dict[str, list[Finding]]
     float_days: list[float]  # one value per scheduled activity, for the chart
     external_link_count: int = 0
+    # (task_code, task_name, float_days) per scheduled activity, for the interactive chart
+    activities: list[tuple[str, str, float]] = field(default_factory=list)
 
     def count(self, check: str) -> int:
         return len(self.findings[check])
@@ -107,6 +109,7 @@ def run_checks(xer: XerFile, high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) -
 
     findings: dict[str, list[Finding]] = {c: [] for c in CHECK_NAMES}
     float_days: list[float] = []
+    activities: list[tuple[str, str, float]] = []
     unscheduled = 0
 
     # --- missing links -----------------------------------------------------
@@ -134,6 +137,7 @@ def run_checks(xer: XerFile, high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) -
             unscheduled += 1
             continue
         float_days.append(days)
+        activities.append((t.get("task_code", ""), t.get("task_name", ""), days))
         if days < 0:
             findings["negative_float"].append(_finding("negative_float", t, f"total float {days:.1f} days", days))
         elif days > high_float_days:
@@ -153,6 +157,7 @@ def run_checks(xer: XerFile, high_float_days: float = DEFAULT_HIGH_FLOAT_DAYS) -
         findings=findings,
         float_days=float_days,
         external_link_count=len(xer.external_links),
+        activities=activities,
     )
 
 

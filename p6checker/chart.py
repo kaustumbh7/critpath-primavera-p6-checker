@@ -17,9 +17,46 @@ from matplotlib.patches import Patch
 
 from .checks import CheckResult
 
-NEGATIVE = "#c0392b"
-NORMAL = "#2e8b57"
-HIGH = "#e67e22"
+# Status colours, validated for colour-vision deficiency and contrast against a
+# light surface. The same three are used by the web UI.
+NEGATIVE = "#b42318"
+NORMAL = "#047857"
+HIGH = "#d97706"
+
+
+def histogram_data(result: CheckResult) -> dict:
+    """The histogram as data, for the interactive chart in the web UI. The PNG
+    below is drawn from exactly the same bins, so the two always agree.
+
+    Each bin lists the activities that fall in it, grouped the same way the
+    checks group them, so a click on a bar can show who is behind it."""
+    thr = result.high_float_threshold_days
+    if not (math.isfinite(thr) and thr > 0):
+        raise ValueError(f"threshold must be a positive number, got {thr!r}")
+    acts = result.activities  # (code, name, days), one per scheduled activity
+    days = [d for _, _, d in acts]
+    if not days:
+        return {"threshold": thr, "bin_width": thr, "bins": []}
+    lo = min(min(days), 0.0)
+    hi = max(max(days), thr * 1.1)
+    w = _bin_width(hi - lo, thr)
+    edges = _edges(lo, hi, w)
+    bins = [
+        {"lo": a, "hi": b, "negative": 0, "ok": 0, "high": 0, "activities": []}
+        for a, b in zip(edges, edges[1:])
+    ]
+    first = edges[0]
+    for code, name, d in sorted(acts, key=lambda a: a[2]):
+        i = min(int((d - first) // w), len(bins) - 1)
+        # guard against float error at an exact edge
+        if d < bins[i]["lo"] and i > 0:
+            i -= 1
+        elif d >= bins[i]["hi"] and i < len(bins) - 1:
+            i += 1
+        group = "negative" if d < 0 else "high" if d > thr else "ok"
+        bins[i][group] += 1
+        bins[i]["activities"].append({"code": code, "name": name, "days": round(d, 2), "group": group})
+    return {"threshold": thr, "bin_width": w, "bins": bins}
 
 
 def float_histogram(result: CheckResult, title: str | None = None) -> bytes:
